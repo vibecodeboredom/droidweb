@@ -11,13 +11,33 @@ android {
         applicationId = "com.droidweb"
         minSdk = 26
         targetSdk = 34
-        versionCode = 1
-        versionName = "1.0.0"
+        versionCode = 2
+        versionName = "1.1.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
+    // FIXED debug keystore (app/debug.keystore, standard debug credentials).
+    // Without this, Gradle generates a NEW debug keystore on every CI run,
+    // so each APK has a different signature and Android refuses an in-place
+    // update (INSTALL_FAILED_UPDATE_INCOMPATIBLE) — forcing an uninstall
+    // that WIPES SharedPreferences (password + tunnel token). With one
+    // keystore, `adb install -r` updates in place and settings survive.
+    // This is a DEBUG key only (not a release key); a release build must
+    // use a proper secret keystore, never this one.
+    signingConfigs {
+        create("debug") {
+            storeFile = file("debug.keystore")
+            storePassword = "android"
+            keyAlias = "androiddebugkey"
+            keyPassword = "android"
+        }
+    }
+
     buildTypes {
+        debug {
+            signingConfig = signingConfigs.getByName("debug")
+        }
         release {
             isMinifyEnabled = false
             proguardFiles(
