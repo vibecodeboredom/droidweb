@@ -44,5 +44,5 @@ dependencies {
     implementation("com.google.android.material:material:1.12.0")
     // Embedded HTTP server (NanoHTTPD core only — no websocket module needed;
     // frames go over MJPEG, input over POST).
-    implementation("org.nanohttpd:nanohttpd:2.3.2")
+    implementation("org.nanohttpd:nanohttpd:2.3.1")
 }
