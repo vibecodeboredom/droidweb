@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>DroidWeb — Log in</title>
+<style>
+  body { margin: 0; background: #111; color: #eee; font-family: system-ui, sans-serif;
+         display: flex; min-height: 100vh; align-items: center; justify-content: center; }
+  .card { background: #1d1d1d; border: 1px solid #333; border-radius: 12px;
+          padding: 28px; width: min(92vw, 360px); }
+  h1 { margin: 0 0 6px; font-size: 22px; }
+  p { color: #aaa; font-size: 14px; margin: 0 0 18px; }
+  input { width: 100%; box-sizing: border-box; background: #222; color: #eee;
+          border: 1px solid #555; border-radius: 8px; padding: 12px; font-size: 16px; }
+  button { width: 100%; margin-top: 12px; background: #2e7d32; color: #fff;
+           border: 0; border-radius: 8px; padding: 12px; font-size: 16px; cursor: pointer; }
+  button:active { background: #388e3c; }
+</style>
+</head>
+<body>
+<div class="card">
+  <h1>DroidWeb</h1>
+  <p>This device is sharing its screen. Enter the password set on the device to take control.</p>
+  <form method="post" action="/login">
+    <input type="password" name="password" placeholder="Password" autofocus autocomplete="current-password">
+    <button type="submit">Log in</button>
+  </form>
+</div>
+</body>
+</html>
