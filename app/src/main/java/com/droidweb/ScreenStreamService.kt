@@ -130,11 +130,28 @@ class ScreenStreamService : Service() {
             lastFrameMs = now
             val image = reader.acquireLatestImage() ?: return@setOnImageAvailableListener
             try {
+                // STRIDE FIX: the ImageReader plane's rows are rowStride
+                // bytes apart, NOT width*pixelStride. copyPixelsFromBuffer
+                // assumes tightly-packed rows, so feeding it the raw
+                // buffer when rowStride > width*pixelStride skews every
+                // row and the picture smears diagonally. Copy into a
+                // bitmap wide enough for a full stride row, then crop
+                // to the real image size.
                 val plane = image.planes[0]
-                val bitmap = Bitmap.createBitmap(
-                    image.width, image.height, Bitmap.Config.ARGB_8888
+                val rowStride = plane.rowStride
+                val pixelStride = plane.pixelStride
+                val paddedWidth = (rowStride / pixelStride).coerceAtLeast(image.width)
+                val full = Bitmap.createBitmap(
+                    paddedWidth, image.height, Bitmap.Config.ARGB_8888
                 )
-                bitmap.copyPixelsFromBuffer(plane.buffer)
+                full.copyPixelsFromBuffer(plane.buffer)
+                val bitmap = if (paddedWidth == image.width) {
+                    full
+                } else {
+                    Bitmap.createBitmap(full, 0, 0, image.width, image.height).also {
+                        full.recycle()
+                    }
+                }
                 val out = ByteArrayOutputStream()
                 bitmap.compress(Bitmap.CompressFormat.JPEG, JPEG_QUALITY, out)
                 bitmap.recycle()
