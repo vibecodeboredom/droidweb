@@ -257,8 +257,11 @@ class ScreenStreamService : Service() {
         const val DEFAULT_PORT = 8080
         private const val TAG = "DroidWeb/Service"
         private const val NOTIFICATION_ID = 1
-        private const val SCALE = 0.5
-        private const val JPEG_QUALITY = 70
-        private const val MIN_FRAME_INTERVAL_MS = 80L // ~12 fps
+        // Fast by default: a smaller, lighter stream beats a prettier
+        // slow one. 0.4x capture + quality 60 keeps frames small, and
+        // 50 ms (~20 fps) keeps motion smooth.
+        private const val SCALE = 0.4
+        private const val JPEG_QUALITY = 60
+        private const val MIN_FRAME_INTERVAL_MS = 50L // ~20 fps
     }
 }

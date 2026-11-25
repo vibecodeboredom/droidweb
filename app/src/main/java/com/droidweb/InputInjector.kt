@@ -44,27 +44,41 @@ class InputInjector {
     }
 
     /** True once a working root variant has been found. */
-    fun isRootAvailable(): Boolean = variant != null || probe()
+    fun isRootAvailable(): Boolean = variant != null || probeVariant() != null
 
-    private fun probe(): Boolean {
+    /**
+     * Find a working root variant by running a HARMLESS probe command.
+     * Never probe with the real command: the old code probed by running
+     * the real tap/swipe/key, then ran it again as the action — so the
+     * first input after every (re)start fired TWICE on the device.
+     */
+    private fun probeVariant(): Variant? {
         // KEYCODE_WAKEUP is a real keycode and a harmless no-op when the
         // screen is already on — it just exercises the `input` binary.
-        return run("input keyevent KEYCODE_WAKEUP").also {
-            Log.i(TAG, "root probe: ${if (it) "OK ($variant)" else "FAILED"}")
+        val found = if (exec("su", "2000", "-c", "input keyevent KEYCODE_WAKEUP")) {
+            Variant.SU_SHELL
+        } else if (exec("su", "-c", "input keyevent KEYCODE_WAKEUP")) {
+            Variant.SU_ROOT
+        } else {
+            null
         }
+        if (found != null) {
+            variant = found
+            Log.i(TAG, "root probe: OK ($found)")
+        } else {
+            Log.w(TAG, "root probe: FAILED")
+        }
+        return found
     }
 
+    /**
+     * Run [cmd] exactly ONCE, using the cached root variant (probing
+     * first with a harmless command if no variant is known yet).
+     */
     private fun run(cmd: String): Boolean {
-        val v = variant ?: run {
-            // Try shell user first (most reliable), then plain root.
-            if (exec("su", "2000", "-c", cmd)) {
-                Variant.SU_SHELL
-            } else if (exec("su", "-c", cmd)) {
-                Variant.SU_ROOT
-            } else {
-                Log.w(TAG, "no working su variant for: $cmd")
-                return false
-            }.also { variant = it }
+        val v = variant ?: probeVariant() ?: run {
+            Log.w(TAG, "no working su variant for: $cmd")
+            return false
         }
         return when (v) {
             Variant.SU_SHELL -> exec("su", "2000", "-c", cmd)

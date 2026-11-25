@@ -5,49 +5,124 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
 <title>DroidWeb — Remote Control</title>
 <style>
+  :root {
+    --bg: #0e1116;
+    --surface: #171c24;
+    --surface-2: #1f2530;
+    --border: #2a3140;
+    --text: #e8ecf1;
+    --muted: #8b94a3;
+    --accent: #4f9cf9;
+    --accent-hover: #6aaefb;
+    --good: #3fce7c;
+    --bad: #ff6b6b;
+  }
   * { box-sizing: border-box; }
-  body { margin: 0; background: #111; color: #eee; font-family: system-ui, sans-serif; }
+  html, body { height: 100%; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+    display: flex; flex-direction: column; min-height: 100vh;
+  }
+  /* Top bar */
   #bar {
-    display: flex; gap: 8px; align-items: center;
-    padding: 8px 12px; background: #1d1d1d; position: sticky; top: 0; z-index: 10;
+    display: flex; align-items: center; gap: 10px;
+    padding: 10px 14px; background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    position: sticky; top: 0; z-index: 10;
   }
-  #bar .title { font-weight: 700; }
+  #bar .logo {
+    width: 28px; height: 28px; border-radius: 8px;
+    background: var(--accent); color: #fff;
+    display: flex; align-items: center; justify-content: center;
+    font-weight: 800; font-size: 15px; flex: none;
+  }
+  #bar .title { font-weight: 700; font-size: 16px; letter-spacing: .2px; }
+  #status {
+    font-size: 12px; font-weight: 600; padding: 4px 10px;
+    border-radius: 999px; background: var(--surface-2);
+    color: var(--good); border: 1px solid var(--border);
+    display: inline-flex; align-items: center; gap: 6px;
+    white-space: nowrap;
+  }
+  #status::before {
+    content: ""; width: 7px; height: 7px; border-radius: 50%;
+    background: currentColor;
+  }
+  #status.bad { color: var(--bad); }
   #bar .spacer { flex: 1; }
-  #status { color: #9be29b; font-size: 13px; }
-  #status.bad { color: #ff8a8a; }
+  #bar a { color: var(--muted); font-size: 13px; text-decoration: none; }
+  #bar a:hover { color: var(--text); }
+  /* Buttons */
   button {
-    background: #2c2c2c; color: #eee; border: 1px solid #555;
-    border-radius: 6px; padding: 6px 10px; font-size: 14px; cursor: pointer;
+    background: var(--surface-2); color: var(--text);
+    border: 1px solid var(--border); border-radius: 8px;
+    padding: 7px 12px; font-size: 14px; cursor: pointer;
+    font-family: inherit; transition: background .12s, border-color .12s;
   }
-  button:active { background: #444; }
-  #screen-wrap { text-align: center; line-height: 0; }
+  button:hover { background: #2a3140; border-color: #3a4358; }
+  button:active { background: #343d4f; }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  button.primary:hover { background: var(--accent-hover); }
+  /* Screen */
+  #screen-wrap {
+    flex: 1; display: flex; align-items: center; justify-content: center;
+    padding: 12px; min-height: 0; background:
+      radial-gradient(1200px 600px at 50% -10%, #1a2230 0%, var(--bg) 60%);
+  }
   #screen {
-    max-width: 100vw; max-height: calc(100vh - 110px);
+    max-width: 100%; max-height: 100%;
+    border-radius: 12px; border: 1px solid var(--border);
+    box-shadow: 0 12px 40px rgba(0, 0, 0, .55);
     touch-action: none; user-select: none; -webkit-user-select: none;
-    background: #000;
+    background: #000; display: block;
   }
-  #keys { display: flex; gap: 8px; padding: 8px 12px; flex-wrap: wrap; }
+  #hint {
+    text-align: center; color: var(--muted); font-size: 12px;
+    padding: 6px 12px 0;
+  }
+  /* Bottom controls */
+  #controls {
+    padding: 10px 14px 14px; background: var(--surface);
+    border-top: 1px solid var(--border);
+    display: flex; flex-direction: column; gap: 10px;
+  }
+  #nav-row { display: flex; gap: 8px; }
+  #nav-row button { flex: 1; }
+  #keys { display: flex; gap: 8px; }
   #keys input {
-    flex: 1; min-width: 140px; background: #222; color: #eee;
-    border: 1px solid #555; border-radius: 6px; padding: 8px;
+    flex: 1; min-width: 0; background: var(--surface-2); color: var(--text);
+    border: 1px solid var(--border); border-radius: 8px;
+    padding: 9px 12px; font-size: 15px; font-family: inherit; outline: none;
+  }
+  #keys input:focus { border-color: var(--accent); }
+  @media (max-width: 560px) {
+    #bar .title { display: none; }
+    #nav-row button { padding: 7px 6px; font-size: 13px; }
   }
 </style>
 </head>
 <body>
 <div id="bar">
+  <span class="logo">D</span>
   <span class="title">DroidWeb</span>
   <span id="status">connecting…</span>
   <span class="spacer"></span>
-  <button id="back">◀ Back</button>
-  <button id="home">Home</button>
-  <button id="recents">Recents</button>
-  <a href="/logout" style="color:#9db8ff">Log out</a>
+  <a href="/logout">Log out</a>
 </div>
 <div id="screen-wrap"><img id="screen" alt="device screen"></div>
-<div id="keys">
-  <input id="text" placeholder="Type text…" autocomplete="off">
-  <button id="send-text">Send</button>
-  <button id="enter">Enter ↵</button>
+<div id="hint">Tap the screen to tap &middot; drag to swipe &middot; keyboard: Backspace, Esc, Enter, arrows</div>
+<div id="controls">
+  <div id="nav-row">
+    <button id="back">&#9664; Back</button>
+    <button id="home">Home</button>
+    <button id="recents">Recents</button>
+  </div>
+  <div id="keys">
+    <input id="text" placeholder="Type text…" autocomplete="off">
+    <button id="send-text" class="primary">Send</button>
+    <button id="enter">Enter &crarr;</button>
+  </div>
 </div>
 <script>
 (function () {
@@ -70,7 +145,6 @@
   function postInput(obj) {
     obj.w = img.clientWidth;
     obj.h = img.clientHeight;
-    if (token) obj.token = token;
     fetch('/input' + (token ? '?token=' + encodeURIComponent(token) : ''), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -79,7 +153,10 @@
     }).catch(function () { setStatus(false, 'input failed'); });
   }
 
-  // Pointer: quick tap, or drag = swipe.
+  // Pointer input: ONE post per gesture. Only pointerdown/pointerup are
+  // used — no click/mousedown handlers, so a tap can never double-fire
+  // from compatibility events. The `down` flag pairs each pointerup
+  // with exactly one pointerdown.
   var startX = 0, startY = 0, startT = 0, down = false;
   function pos(e) {
     var r = img.getBoundingClientRect();
@@ -93,6 +170,7 @@
   img.addEventListener('pointerup', function (e) {
     if (!down) return;
     down = false;
+    e.preventDefault();
     var p = pos(e);
     var dx = p.x - startX, dy = p.y - startY;
     var dt = Date.now() - startT;
@@ -107,7 +185,7 @@
   // Keep the page from scrolling/zooming while touching the screen.
   img.addEventListener('touchmove', function (e) { e.preventDefault(); }, { passive: false });
 
-  // Buttons.
+  // Buttons (one post per click — plain onclick, no pointer handlers).
   document.getElementById('back').onclick = function () { postInput({ type: 'key', key: 'KEYCODE_BACK' }); };
   document.getElementById('home').onclick = function () { postInput({ type: 'key', key: 'KEYCODE_HOME' }); };
   document.getElementById('recents').onclick = function () { postInput({ type: 'key', key: 'KEYCODE_APP_SWITCH' }); };
@@ -120,7 +198,7 @@
     if (e.key === 'Enter') { document.getElementById('send-text').click(); }
   });
 
-  // Physical keyboard: Backspace / Enter / Escape map to device keys.
+  // Physical keyboard: Backspace / Enter / Escape / arrows map to device keys.
   document.addEventListener('keydown', function (e) {
     if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA')) return;
     if (e.key === 'Backspace') { postInput({ type: 'key', key: 'KEYCODE_DEL' }); e.preventDefault(); }
