@@ -89,7 +89,8 @@ class FrameBroadcaster {
                 } catch (e: InterruptedException) {
                     Thread.currentThread().interrupt()
                     return -1
-                } ?: run {
+                }
+                if (jpeg == null) {
                     // No frame arrived (capture paused/stopped). Keep the
                     // connection open by waiting again instead of ending it.
                     if (closed) return -1
