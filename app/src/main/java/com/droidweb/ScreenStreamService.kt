@@ -116,7 +116,8 @@ class ScreenStreamService : Service() {
         wm.defaultDisplay.getRealMetrics(metrics)
         displayWidth = metrics.widthPixels
         displayHeight = metrics.heightPixels
-        // Half resolution: far less data to copy + encode, still readable.
+        // Lower resolution: far less data to copy + encode, still readable.
+        // (0.3x — performance over quality, per Chuni.)
         val capW = (displayWidth * SCALE).toInt().coerceAtLeast(320)
         val capH = (displayHeight * SCALE).toInt().coerceAtLeast(320)
         Log.i(TAG, "display ${displayWidth}x$displayHeight -> capture ${capW}x$capH")
@@ -273,11 +274,11 @@ class ScreenStreamService : Service() {
         const val DEFAULT_PORT = 8080
         private const val TAG = "DroidWeb/Service"
         private const val NOTIFICATION_ID = 1
-        // Fast by default: a smaller, lighter stream beats a prettier
-        // slow one. 0.4x capture + quality 60 keeps frames small, and
-        // 50 ms (~20 fps) keeps motion smooth.
-        private const val SCALE = 0.4
-        private const val JPEG_QUALITY = 60
-        private const val MIN_FRAME_INTERVAL_MS = 50L // ~20 fps
+        // Performance-first (Chuni: prefers fps over quality). Smaller,
+        // lighter frames beat prettier slow ones: 0.3x capture + quality
+        // 40 keeps frames small, and 33 ms (~30 fps) keeps motion smooth.
+        private const val SCALE = 0.3
+        private const val JPEG_QUALITY = 40
+        private const val MIN_FRAME_INTERVAL_MS = 33L // ~30 fps
     }
 }
