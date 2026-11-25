@@ -26,7 +26,10 @@ android {
     // This is a DEBUG key only (not a release key); a release build must
     // use a proper secret keystore, never this one.
     signingConfigs {
-        create("debug") {
+        // Configure the built-in debug config (it already exists — do
+        // NOT create("debug")). Point it at the fixed keystore so every
+        // CI build signs with the same key.
+        getByName("debug") {
             storeFile = file("debug.keystore")
             storePassword = "android"
             keyAlias = "androiddebugkey"
