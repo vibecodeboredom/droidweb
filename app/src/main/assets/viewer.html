@@ -15,6 +15,7 @@
     --accent: #4f9cf9;
     --accent-hover: #6aaefb;
     --good: #3fce7c;
+    --warn: #ffb454;
     --bad: #ff6b6b;
   }
   * { box-sizing: border-box; }
@@ -49,7 +50,12 @@
     content: ""; width: 7px; height: 7px; border-radius: 50%;
     background: currentColor;
   }
+  #status.warn { color: var(--warn); }
   #status.bad { color: var(--bad); }
+  #stats {
+    font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+  }
   #bar .spacer { flex: 1; }
   #bar a { color: var(--muted); font-size: 13px; text-decoration: none; }
   #bar a:hover { color: var(--text); }
@@ -98,6 +104,7 @@
   #keys input:focus { border-color: var(--accent); }
   @media (max-width: 560px) {
     #bar .title { display: none; }
+    #stats { display: none; }
     #nav-row button { padding: 7px 6px; font-size: 13px; }
   }
 </style>
@@ -107,7 +114,9 @@
   <span class="logo">D</span>
   <span class="title">DroidWeb</span>
   <span id="status">connecting…</span>
+  <span id="stats"></span>
   <span class="spacer"></span>
+  <button id="fullscreen" title="Fullscreen">&#9974;</button>
   <a href="/logout">Log out</a>
 </div>
 <div id="screen-wrap"><img id="screen" alt="device screen"></div>
@@ -130,17 +139,98 @@
   var token = params.get('token') || '';
   var img = document.getElementById('screen');
   var statusEl = document.getElementById('status');
+  var statsEl = document.getElementById('stats');
 
-  function setStatus(ok, msg) {
+  function setStatus(kind, msg) {
+    // kind: 'ok' | 'warn' | 'bad'
     statusEl.textContent = msg;
-    statusEl.className = ok ? '' : 'bad';
+    statusEl.className = kind === 'ok' ? '' : kind;
   }
 
-  // The MJPEG stream. The token rides as a query parameter because an
-  // <img> tag cannot set headers (the server also accepts the cookie).
-  img.src = '/stream' + (token ? '?token=' + encodeURIComponent(token) : '');
-  img.onload = function () { setStatus(true, 'live'); };
-  img.onerror = function () { setStatus(false, 'stream error — reload the page'); };
+  function streamUrl() {
+    var u = '/stream' + (token ? '?token=' + encodeURIComponent(token) : '');
+    // Cache-buster so a reconnect never replays a stale/broken stream.
+    u += (u.indexOf('?') >= 0 ? '&' : '?') + '_=' + Date.now();
+    return u;
+  }
+
+  // ---- auto-reconnecting MJPEG stream -------------------------------
+  var reconnectDelay = 1000;   // start at 1s, back off to 10s max
+  var reconnectTimer = null;
+  var streamLive = false;
+
+  function connectStream() {
+    if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null; }
+    img.src = streamUrl();
+  }
+
+  function scheduleReconnect() {
+    if (reconnectTimer) return;
+    streamLive = false;
+    setStatus('warn', 'reconnecting…');
+    reconnectTimer = setTimeout(function () {
+      reconnectTimer = null;
+      connectStream();
+    }, reconnectDelay);
+    reconnectDelay = Math.min(reconnectDelay * 2, 10000);
+  }
+
+  img.onload = function () {
+    // First frame arrived — the stream is live again.
+    streamLive = true;
+    reconnectDelay = 1000;
+    setStatus('ok', 'live');
+  };
+  img.onerror = function () {
+    // The MJPEG stream broke. Reconnect by ourselves instead of
+    // asking the user to reload the page.
+    scheduleReconnect();
+  };
+
+  connectStream();
+
+  // ---- heartbeat + fps / latency ------------------------------------
+  // Poll /status every 2s. The server reports total frames published;
+  // fps = frames delta / time delta. Latency = round-trip of the poll.
+  var lastFrames = null, lastTime = 0, lastLatency = null;
+  var missedBeats = 0;
+
+  function beat() {
+    var t0 = Date.now();
+    var url = '/status' + (token ? '?token=' + encodeURIComponent(token) : '');
+    fetch(url, { credentials: 'same-origin' })
+      .then(function (r) { if (!r.ok) throw new Error('http ' + r.status); return r.json(); })
+      .then(function (s) {
+        var now = Date.now();
+        lastLatency = now - t0;
+        missedBeats = 0;
+        if (typeof s.frames === 'number' && lastFrames !== null && now > lastTime) {
+          var fps = (s.frames - lastFrames) / ((now - lastTime) / 1000);
+          if (fps >= 0 && fps < 100) {
+            statsEl.textContent = Math.round(fps) + ' fps · ' + lastLatency + ' ms';
+          }
+        }
+        if (typeof s.frames === 'number') { lastFrames = s.frames; lastTime = now; }
+        if (streamLive) setStatus('ok', 'live');
+      })
+      .catch(function () {
+        // Server unreachable — the stream is probably dead too.
+        missedBeats++;
+        statsEl.textContent = '';
+        if (missedBeats >= 2) scheduleReconnect();
+      });
+  }
+  setInterval(beat, 2000);
+  beat();
+
+  // ---- fullscreen ----------------------------------------------------
+  document.getElementById('fullscreen').onclick = function () {
+    if (document.fullscreenElement) {
+      document.exitFullscreen();
+    } else if (document.documentElement.requestFullscreen) {
+      document.documentElement.requestFullscreen();
+    }
+  };
 
   function postInput(obj) {
     obj.w = img.clientWidth;
@@ -150,7 +240,7 @@
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(obj),
       credentials: 'same-origin'
-    }).catch(function () { setStatus(false, 'input failed'); });
+    }).catch(function () { setStatus('bad', 'input failed'); });
   }
 
   // Pointer input: ONE post per gesture. Only pointerdown/pointerup are

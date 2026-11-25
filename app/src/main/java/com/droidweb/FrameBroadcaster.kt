@@ -27,8 +27,14 @@ class FrameBroadcaster {
 
     private val clients = ConcurrentHashMap<String, LinkedBlockingQueue<ByteArray>>()
 
+    /** Total JPEG frames published since the service started (for /status fps). */
+    @Volatile
+    var framesPublished: Long = 0
+        private set
+
     /** Push a fresh JPEG frame to every connected client (non-blocking). */
     fun publish(jpeg: ByteArray) {
+        framesPublished++
         for (q in clients.values) {
             // Bounded queue: drop the oldest frame rather than blocking.
             if (!q.offer(jpeg)) {

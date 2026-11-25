@@ -55,6 +55,7 @@ class ScreenStreamService : Service() {
     private var displayWidth = 0
     private var displayHeight = 0
     private var lastFrameMs = 0L
+    private var serviceStartMs = 0L
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -63,6 +64,7 @@ class ScreenStreamService : Service() {
             stopSelf()
             return START_NOT_STICKY
         }
+        if (serviceStartMs == 0L) serviceStartMs = System.currentTimeMillis()
         val resultCode = intent?.getIntExtra(EXTRA_RESULT_CODE, 0) ?: 0
         val data = intent?.getParcelableExtra<Intent>(EXTRA_RESULT_DATA)
         if (resultCode == 0 || data == null) {
@@ -195,6 +197,10 @@ class ScreenStreamService : Service() {
                     put("displayHeight", displayHeight)
                     put("root", input.isRootAvailable())
                     put("tunnel", tunnel?.publicUrl)
+                    // v3: the viewer computes live fps from the frames
+                    // counter and shows latency from the poll round-trip.
+                    put("frames", frames.framesPublished)
+                    put("uptimeMs", System.currentTimeMillis() - serviceStartMs)
                 }
             }
         )
@@ -207,7 +213,16 @@ class ScreenStreamService : Service() {
             if (!token.isNullOrBlank()) {
                 tunnel = TunnelManager(this,
                     onStatus = { s -> Log.i(TAG, "tunnel: $s") },
-                    onUrl = { url -> Log.i(TAG, "tunnel URL: $url") })
+                    onUrl = { url ->
+                        // v3: persist the public URL so the app's status
+                        // card can show it (and copy it) without the
+                        // user digging through the log.
+                        getSharedPreferences(PREFS, MODE_PRIVATE).edit().apply {
+                            if (url.isNullOrBlank()) remove(KEY_TUNNEL_URL) else putString(KEY_TUNNEL_URL, url)
+                            apply()
+                        }
+                        Log.i(TAG, "tunnel URL: $url")
+                    })
                 tunnel?.start(token)
             }
             // Refresh the notification with the URL.
@@ -254,6 +269,7 @@ class ScreenStreamService : Service() {
         const val PREFS = "droidweb"
         const val KEY_PORT = "port"
         const val KEY_TUNNEL_TOKEN = "tunnelToken"
+        const val KEY_TUNNEL_URL = "tunnelUrl"
         const val DEFAULT_PORT = 8080
         private const val TAG = "DroidWeb/Service"
         private const val NOTIFICATION_ID = 1

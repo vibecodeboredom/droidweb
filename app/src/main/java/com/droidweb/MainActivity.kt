@@ -2,29 +2,32 @@ package com.droidweb
 
 import android.Manifest
 import android.app.Activity
+import android.content.ClipData
+import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.graphics.PorterDuff
 import android.media.projection.MediaProjectionManager
 import android.net.wifi.WifiManager
 import android.os.Build
 import android.os.Bundle
-import android.text.InputType
+import android.os.Handler
+import android.os.Looper
 import android.util.Log
-import android.view.Gravity
-import android.widget.Button
+import android.view.View
 import android.widget.EditText
-import android.widget.LinearLayout
-import android.widget.ScrollView
 import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
+import com.google.android.material.button.MaterialButton
 
 /**
- * Main UI: set the password, paste an optional Cloudflare Tunnel token,
- * start/stop the screen-sharing service, and see the URLs.
+ * Main UI (v3): a dark card-based layout — status card with tap-to-copy
+ * URLs, a prominent Start/Stop button, and the password / tunnel token /
+ * port settings in their own cards.
  *
  * The service refuses to start without a password — that is deliberate.
  * The password is the only thing standing between the open internet and
@@ -33,15 +36,32 @@ import androidx.core.content.ContextCompat
 class MainActivity : AppCompatActivity() {
 
     private lateinit var passwords: PasswordStore
-    private lateinit var statusView: TextView
+
+    private lateinit var statusDot: View
+    private lateinit var statusTitle: TextView
+    private lateinit var statusDetail: TextView
+    private lateinit var localUrlView: TextView
+    private lateinit var tunnelUrlView: TextView
     private lateinit var logView: TextView
     private lateinit var passwordField: EditText
     private lateinit var tokenField: EditText
     private lateinit var portField: EditText
-    private lateinit var startStopButton: Button
+    private lateinit var startStopButton: MaterialButton
 
     private val input by lazy { InputInjector() }
     private var serviceRunning = false
+
+    // While the service runs, re-read the status every 2s so the tunnel
+    // URL appears in the card as soon as cloudflared connects.
+    private val refreshHandler = Handler(Looper.getMainLooper())
+    private val refreshTick = object : Runnable {
+        override fun run() {
+            if (serviceRunning) {
+                refreshUi()
+                refreshHandler.postDelayed(this, 2000)
+            }
+        }
+    }
 
     private val captureLauncher =
         registerForActivityResult(
@@ -59,6 +79,7 @@ class MainActivity : AppCompatActivity() {
                 }
                 serviceRunning = true
                 refreshUi()
+                refreshHandler.post(refreshTick)
                 log("Service started — open the URL below in a browser")
             } else {
                 Toast.makeText(this, "Screen capture permission denied", Toast.LENGTH_SHORT).show()
@@ -67,40 +88,21 @@ class MainActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        setContentView(R.layout.activity_main)
         passwords = PasswordStore(this)
 
-        val root = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(48, 48, 48, 48)
-        }
+        statusDot = findViewById(R.id.status_dot)
+        statusTitle = findViewById(R.id.status_title)
+        statusDetail = findViewById(R.id.status_detail)
+        localUrlView = findViewById(R.id.status_local_url)
+        tunnelUrlView = findViewById(R.id.status_tunnel_url)
+        logView = findViewById(R.id.log_view)
+        passwordField = findViewById(R.id.password_field)
+        tokenField = findViewById(R.id.token_field)
+        portField = findViewById(R.id.port_field)
+        startStopButton = findViewById(R.id.start_stop_button)
 
-        fun label(text: String) = TextView(this).apply {
-            this.text = text
-            textSize = 16f
-            setPadding(0, 24, 0, 8)
-        }
-        fun button(text: String, onClick: () -> Unit) = Button(this).apply {
-            this.text = text
-            setOnClickListener { onClick() }
-        }
-
-        root.addView(TextView(this).apply {
-            text = "DroidWeb"
-            textSize = 28f
-            gravity = Gravity.CENTER_HORIZONTAL
-        })
-        root.addView(TextView(this).apply {
-            text = "This device hosts its own browser remote control."
-            gravity = Gravity.CENTER_HORIZONTAL
-        })
-
-        root.addView(label("Password (required — the server will not start without one)"))
-        passwordField = EditText(this).apply {
-            hint = "Set / change password (min 4 chars)"
-            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD
-        }
-        root.addView(passwordField)
-        root.addView(button("Save password") {
+        findViewById<MaterialButton>(R.id.save_password_button).setOnClickListener {
             val pw = passwordField.text.toString()
             if (passwords.setPassword(pw)) {
                 Toast.makeText(this, "Password saved", Toast.LENGTH_SHORT).show()
@@ -109,42 +111,20 @@ class MainActivity : AppCompatActivity() {
             } else {
                 Toast.makeText(this, "Password must be at least 4 characters", Toast.LENGTH_SHORT).show()
             }
-        })
-
-        root.addView(label("Cloudflare Tunnel token (optional — makes it work ONLINE)"))
-        tokenField = EditText(this).apply {
-            hint = "Paste tunnel token here (leave empty for local / Tailscale only)"
-            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD
         }
-        root.addView(tokenField)
-        root.addView(button("Save tunnel token") {
+
+        findViewById<MaterialButton>(R.id.save_token_button).setOnClickListener {
             prefs().edit()
                 .putString(ScreenStreamService.KEY_TUNNEL_TOKEN, tokenField.text.toString().trim())
                 .apply()
             Toast.makeText(this, "Tunnel token saved (applies on next start)", Toast.LENGTH_SHORT).show()
             tokenField.text.clear()
             refreshUi()
-        })
-
-        root.addView(label("Port (default 8080)"))
-        portField = EditText(this).apply {
-            hint = "8080"
-            inputType = InputType.TYPE_CLASS_NUMBER
         }
-        root.addView(portField)
 
-        startStopButton = button("Start sharing") { toggleService() }
-        root.addView(startStopButton)
+        startStopButton.setOnClickListener { toggleService() }
 
-        root.addView(label("Status"))
-        statusView = TextView(this).apply { textSize = 15f }
-        root.addView(statusView)
-
-        root.addView(label("Log"))
-        logView = TextView(this).apply { textSize = 13f }
-        root.addView(logView)
-
-        root.addView(button("Check root") {
+        findViewById<MaterialButton>(R.id.check_root_button).setOnClickListener {
             Thread {
                 val ok = input.isRootAvailable()
                 runOnUiThread {
@@ -156,14 +136,33 @@ class MainActivity : AppCompatActivity() {
                     refreshUi()
                 }
             }.start()
-        })
+        }
 
-        setContentView(ScrollView(this).apply { addView(root) })
+        // Tap a URL to copy it.
+        localUrlView.setOnClickListener { copyUrl(localUrlView.text.toString(), "Local URL") }
+        tunnelUrlView.setOnClickListener { copyUrl(tunnelUrlView.text.toString(), "Tunnel URL") }
 
         // Pre-fill saved values (token is never shown back).
         portField.setText(prefs().getInt(ScreenStreamService.KEY_PORT, 8080).toString())
         requestNotificationPermission()
         refreshUi()
+    }
+
+    override fun onResume() {
+        super.onResume()
+        refreshUi()
+    }
+
+    override fun onDestroy() {
+        refreshHandler.removeCallbacks(refreshTick)
+        super.onDestroy()
+    }
+
+    private fun copyUrl(url: String, label: String) {
+        if (!url.startsWith("http")) return
+        val cm = getSystemService(CLIPBOARD_SERVICE) as ClipboardManager
+        cm.setPrimaryClip(ClipData.newPlainText(label, url))
+        Toast.makeText(this, "$label copied", Toast.LENGTH_SHORT).show()
     }
 
     private fun toggleService() {
@@ -172,6 +171,7 @@ class MainActivity : AppCompatActivity() {
                 action = ScreenStreamService.ACTION_STOP
             })
             serviceRunning = false
+            refreshHandler.removeCallbacks(refreshTick)
             refreshUi()
             log("Service stopped")
             return
@@ -195,21 +195,55 @@ class MainActivity : AppCompatActivity() {
     private fun refreshUi() {
         val port = prefs().getInt(ScreenStreamService.KEY_PORT, 8080)
         val localIp = localIpAddress()
+        val hasPassword = passwords.hasPassword()
         val hasToken = !prefs().getString(ScreenStreamService.KEY_TUNNEL_TOKEN, null).isNullOrBlank()
-        statusView.text = buildString {
-            append("Password set: ${if (passwords.hasPassword()) "yes" else "NO — set one above"}\n")
-            append("Service: ${if (serviceRunning) "RUNNING" else "stopped"}\n")
-            if (serviceRunning && localIp != null) {
-                append("Local URL: http://$localIp:$port\n")
-                append("(open it in any browser, then log in)\n")
+        val tunnelUrl = prefs().getString(ScreenStreamService.KEY_TUNNEL_URL, null)
+        val rootOk = input.isRootAvailable()
+
+        // Status card.
+        val dotColor = when {
+            serviceRunning -> R.color.dw_good
+            else -> R.color.dw_muted
+        }
+        statusDot.background.mutate().setColorFilter(
+            ContextCompat.getColor(this, dotColor), PorterDuff.Mode.SRC_IN
+        )
+        statusTitle.text = if (serviceRunning) "Sharing" else "Stopped"
+        statusDetail.text = buildString {
+            append("Password: ${if (hasPassword) "set" else "NOT SET — set one below"}")
+            append("\nRoot input: ${if (rootOk) "available" else "not detected (tap Check root)"}")
+        }
+        if (serviceRunning && localIp != null) {
+            localUrlView.text = "http://$localIp:$port"
+            localUrlView.setTextColor(ContextCompat.getColor(this, R.color.dw_accent))
+        } else {
+            localUrlView.text = "Local URL — start sharing to see it"
+            localUrlView.setTextColor(ContextCompat.getColor(this, R.color.dw_muted))
+        }
+        when {
+            !tunnelUrl.isNullOrBlank() -> {
+                tunnelUrlView.text = tunnelUrl
+                tunnelUrlView.setTextColor(ContextCompat.getColor(this, R.color.dw_accent))
             }
-            append("Tunnel token: ${if (hasToken) "saved" else "not set (local / Tailscale only)"}\n")
-            if (serviceRunning && hasToken) {
-                append("Tunnel URL: appears in the log once cloudflared connects\n")
+            serviceRunning && hasToken -> {
+                tunnelUrlView.text = "Tunnel — connecting…"
+                tunnelUrlView.setTextColor(ContextCompat.getColor(this, R.color.dw_warn))
             }
-            append("Root input: ${if (input.isRootAvailable()) "available" else "not detected yet (tap Check root)"}")
+            hasToken -> {
+                tunnelUrlView.text = "Tunnel — token saved, starts with sharing"
+                tunnelUrlView.setTextColor(ContextCompat.getColor(this, R.color.dw_muted))
+            }
+            else -> {
+                tunnelUrlView.text = "Tunnel — no token saved"
+                tunnelUrlView.setTextColor(ContextCompat.getColor(this, R.color.dw_muted))
+            }
         }
         startStopButton.text = if (serviceRunning) "Stop sharing" else "Start sharing"
+        startStopButton.backgroundTintList =
+            ContextCompat.getColorStateList(
+                this,
+                if (serviceRunning) R.color.dw_bad else R.color.dw_accent
+            )
     }
 
     private fun localIpAddress(): String? {

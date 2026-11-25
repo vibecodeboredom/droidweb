@@ -1,10 +1,17 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="purple_200">#FFBB86FC</color>
-    <color name="purple_500">#FF6200EE</color>
-    <color name="purple_700">#FF3700B3</color>
-    <color name="teal_200">#FF03DAC5</color>
-    <color name="teal_700">#FF018786</color>
-    <color name="black">#FF000000</color>
+    <!-- DroidWeb dark palette (v3) — matches the web viewer so the app
+         and the browser page feel like one product. -->
+    <color name="dw_bg">#0E1116</color>
+    <color name="dw_surface">#171C24</color>
+    <color name="dw_surface2">#1F2530</color>
+    <color name="dw_border">#2A3140</color>
+    <color name="dw_text">#E8ECF1</color>
+    <color name="dw_muted">#8B94A3</color>
+    <color name="dw_accent">#4F9CF9</color>
+    <color name="dw_good">#3FCE7C</color>
+    <color name="dw_bad">#FF6B6B</color>
+    <color name="dw_warn">#FFB454</color>
     <color name="white">#FFFFFFFF</color>
+    <color name="black">#FF000000</color>
 </resources>

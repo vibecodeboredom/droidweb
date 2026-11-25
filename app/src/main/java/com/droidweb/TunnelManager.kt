@@ -24,6 +24,12 @@ import java.net.URL
  *
  * With no token the app still works on local Wi-Fi / Tailscale — the
  * tunnel is purely the "localhost ONLINE" step.
+ *
+ * v3 watchdog: if cloudflared dies on its own (network blip, crash),
+ * it is restarted automatically with exponential backoff, so a dropped
+ * tunnel heals itself instead of staying dead. It only restarts when
+ * the user did NOT ask to stop, and the backoff caps at 60s so a bad
+ * token can't spin a tight restart loop.
  */
 class TunnelManager(
     private val context: Context,
@@ -37,16 +43,32 @@ class TunnelManager(
     var publicUrl: String? = null
         private set
 
+    @Volatile
+    private var stopRequested = false
+
+    @Volatile
+    private var savedToken: String? = null
+
+    private var restartAttempts = 0
+
     val isRunning: Boolean get() = process?.isAlive == true
 
     /** Start the tunnel (downloads cloudflared first if needed). */
     fun start(token: String) {
         if (isRunning) return
+        stopRequested = false
+        savedToken = token
+        restartAttempts = 0
+        launchTunnel(token)
+    }
+
+    private fun launchTunnel(token: String) {
         Thread({
             try {
                 onStatus("Downloading cloudflared…")
                 val bin = ensureBinary() ?: run {
                     onStatus("cloudflared download failed")
+                    scheduleRestart()
                     return@Thread
                 }
                 onStatus("Starting tunnel…")
@@ -84,15 +106,42 @@ class TunnelManager(
                 p.waitFor()
                 process = null
                 if (publicUrl == null) onStatus("Tunnel exited — check the token")
+                // Unexpected exit (not a user stop): the watchdog restarts it.
+                scheduleRestart()
             } catch (e: Exception) {
                 Log.w(TAG, "tunnel failed: ${e.message}")
                 onStatus("Tunnel error: ${e.message}")
                 process = null
+                scheduleRestart()
             }
         }, "droidweb-tunnel").start()
     }
 
+    /** Restart after an unexpected exit, with exponential backoff. */
+    private fun scheduleRestart() {
+        val token = savedToken ?: return
+        if (stopRequested) return
+        restartAttempts++
+        // 5s, 10s, 20s, 40s, then 60s cap. A bad token exits fast every
+        // time, so the backoff keeps it from hammering Cloudflare.
+        val delayMs = minOf(5_000L shl minOf(restartAttempts - 1, 3), 60_000L)
+        onStatus("Tunnel dropped — retrying in ${delayMs / 1000}s")
+        Log.i(TAG, "tunnel watchdog: restart #$restartAttempts in ${delayMs}ms")
+        Thread({
+            try {
+                Thread.sleep(delayMs)
+            } catch (_: InterruptedException) {
+                return@Thread
+            }
+            if (stopRequested || isRunning) return@Thread
+            launchTunnel(token)
+        }, "droidweb-tunnel-watchdog").start()
+    }
+
     fun stop() {
+        stopRequested = true
+        savedToken = null
+        restartAttempts = 0
         try { process?.destroy() } catch (_: Exception) { }
         process = null
         publicUrl = null
@@ -111,6 +160,9 @@ class TunnelManager(
         if (url.contains("cloudflare.com") && !url.contains("trycloudflare.com")) return
         if (publicUrl != url) {
             publicUrl = url
+            // The tunnel is live — a healthy connection resets the
+            // watchdog backoff so the next drop retries quickly.
+            restartAttempts = 0
             onUrl(url)
             onStatus("Tunnel live: $url")
             Log.i(TAG, "tunnel URL: $url")
